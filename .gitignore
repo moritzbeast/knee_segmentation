@@ -1,0 +1,12 @@
+# Python
+__pycache__/
+
+# macOS
+.DS_Store
+
+# training runs (models, plots)
+sessions/
+*.pth
+
+# data (images, masks, CSVs, outputs)
+data/
