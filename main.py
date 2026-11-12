@@ -25,7 +25,8 @@ val_set = pd.read_csv(os.path.join(args.csv_dir, "val.csv"))
 train_transform = v2.Compose([
     v2.RandomHorizontalFlip(),
     v2.RandomAffine(degrees=10, translate=(0.05, 0.05), scale=(0.9, 1.1)),
-    v2.ColorJitter(brightness=0.2, contrast=0.2)
+    v2.ColorJitter(brightness=0.2, contrast=0.2),
+    v2.RandomInvert(p=0.2),
 ])
 
 # 3: create dataset
