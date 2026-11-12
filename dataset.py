@@ -1,6 +1,9 @@
 from torch.utils.data import Dataset
 import cv2
 import numpy as np
+import torch
+from torchvision import tv_tensors
+
 
 class KneeDataset(Dataset):
     def __init__(self, df, mean, std, transform=None):
@@ -16,10 +19,13 @@ class KneeDataset(Dataset):
         xray = read_xray(self.df["xrays"].iloc[index])
         mask = read_mask(self.df["masks"].iloc[index])
 
+        # mark image and mask, so v2 knows how to treat each of them
+        xray = tv_tensors.Image(torch.from_numpy(xray))
+        mask = tv_tensors.Mask(torch.from_numpy(mask))
+
         if self.transform is not None:
-            for t in self.transform:
-                xray = t(xray)
-                mask = t(mask)
+            # called once with both
+            xray, mask = self.transform(xray, mask)
 
         xray = (xray - self.mean) / self.std
 
