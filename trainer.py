@@ -73,6 +73,11 @@ def train_model(model, train_loader, val_loader):
     tqdm.write(f"Best model: epoch {best_metrics['best_epoch']} | Val Dice: {best_dice:.4f}")
     plot_metrics(history)
 
+    if args.plot_preds:
+        # model in memory has the weights of the last epoch -> load the best one
+        model.load_state_dict(torch.load(os.path.join(args.out_dir, "best_model.pth"), map_location=device))
+        plot_predictions(model, val_loader)
+
     return best_metrics
 
 
@@ -115,4 +120,43 @@ def plot_metrics(history):
 
     fig.tight_layout()
     fig.savefig(os.path.join(args.out_dir, "metrics.png"), dpi=150)
+    plt.close(fig)
+
+def plot_predictions(model, val_loader, n_cols=5):
+    model.eval()
+    xrays, masks, preds, dices = [], [], [], []
+
+    with torch.no_grad():
+        for batch in val_loader:
+            images = batch["xray"].to(device)
+            targets = batch["mask"].to(device)
+            logits = model(images)
+
+            # dice per image, not per batch
+            for i in range(images.size(0)):
+                dices.append(dice_score_from_logits(logits[i:i+1], targets[i:i+1]))
+
+            xrays.append(images[:, 0].cpu().numpy())
+            masks.append(targets[:, 0].cpu().numpy().astype(bool))
+            preds.append((torch.sigmoid(logits[:, 0]) > 0.5).cpu().numpy())
+
+    xrays, masks, preds = np.concatenate(xrays), np.concatenate(masks), np.concatenate(preds)
+
+    n_rows = int(np.ceil(len(xrays) / n_cols))
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(3 * n_cols, 3 * n_rows))
+    for ax in axes.flat:
+        ax.axis("off")
+
+    for ax, xray, mask, pred, dice in zip(axes.flat, xrays, masks, preds, dices):
+        ax.imshow(xray, cmap="gray")
+        error = np.zeros((*mask.shape, 4))     # RGBA, transparent by default
+        error[mask & pred] = [0, 1, 0, 0.3]    # correct
+        error[pred & ~mask] = [1, 0, 0, 0.7]   # false positive
+        error[mask & ~pred] = [0, 0, 1, 0.7]   # false negative
+        ax.imshow(error)
+        ax.set_title(f"Dice {dice:.4f}", fontsize=9)
+
+    fig.suptitle("Validation: green = correct, red = false positive, blue = false negative")
+    fig.tight_layout()
+    fig.savefig(os.path.join(args.out_dir, "predictions_val.png"), dpi=150)
     plt.close(fig)

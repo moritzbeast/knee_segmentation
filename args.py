@@ -19,6 +19,8 @@ def get_args():
 
     parser.add_argument("-depth", type=int, default=4)
 
+    parser.add_argument("-plot_preds", action="store_true")
+
     args = parser.parse_args()
     
     return args
