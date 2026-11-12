@@ -8,7 +8,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from args import get_args
-from utils import dice_loss_from_logits, dice_score_from_logits
+from utils import dice_loss_from_logits, dice_score_from_logits, postprocess, dice_np
+
 
 args = get_args()
 device = torch.device(
@@ -122,41 +123,48 @@ def plot_metrics(history):
     fig.savefig(os.path.join(args.out_dir, "metrics.png"), dpi=150)
     plt.close(fig)
 
-def plot_predictions(model, val_loader, n_cols=5):
+def plot_predictions(model, val_loader, per_fig=5):
     model.eval()
-    xrays, masks, preds, dices = [], [], [], []
+    xrays, masks, preds_raw = [], [], []
 
     with torch.no_grad():
         for batch in val_loader:
             images = batch["xray"].to(device)
-            targets = batch["mask"].to(device)
             logits = model(images)
 
-            # dice per image, not per batch
-            for i in range(images.size(0)):
-                dices.append(dice_score_from_logits(logits[i:i+1], targets[i:i+1]))
-
             xrays.append(images[:, 0].cpu().numpy())
-            masks.append(targets[:, 0].cpu().numpy().astype(bool))
-            preds.append((torch.sigmoid(logits[:, 0]) > 0.5).cpu().numpy())
+            masks.append(batch["mask"][:, 0].numpy().astype(bool))
+            preds_raw.append((torch.sigmoid(logits[:, 0]) > 0.5).cpu().numpy())
 
-    xrays, masks, preds = np.concatenate(xrays), np.concatenate(masks), np.concatenate(preds)
+    xrays, masks, preds_raw = np.concatenate(xrays), np.concatenate(masks), np.concatenate(preds_raw)
 
-    n_rows = int(np.ceil(len(xrays) / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(3 * n_cols, 3 * n_rows))
-    for ax in axes.flat:
-        ax.axis("off")
+    # remove islands + fill holes on every prediction
+    preds_post = np.stack([postprocess(p) for p in preds_raw]).astype(bool)
 
-    for ax, xray, mask, pred, dice in zip(axes.flat, xrays, masks, preds, dices):
-        ax.imshow(xray, cmap="gray")
-        error = np.zeros((*mask.shape, 4))     # RGBA, transparent by default
-        error[mask & pred] = [0, 1, 0, 0.3]    # correct
-        error[pred & ~mask] = [1, 0, 0, 0.7]   # false positive
-        error[mask & ~pred] = [0, 0, 1, 0.7]   # false negative
-        ax.imshow(error)
-        ax.set_title(f"Dice {dice:.4f}", fontsize=9)
+    dices_raw = [dice_np(p, m) for p, m in zip(preds_raw, masks)]
+    dices_post = [dice_np(p, m) for p, m in zip(preds_post, masks)]
+    print(f"Mean val Dice: raw {np.mean(dices_raw):.4f} | post-processed {np.mean(dices_post):.4f}")
 
-    fig.suptitle("Validation: green = correct, red = false positive, blue = false negative")
-    fig.tight_layout()
-    fig.savefig(os.path.join(args.out_dir, "predictions_val.png"), dpi=150)
-    plt.close(fig)
+    # one figure per 5 images, left = raw, right = post-processed
+    for k, start in enumerate(range(0, len(xrays), per_fig)):
+        idxs = range(start, min(start + per_fig, len(xrays)))
+        fig, axes = plt.subplots(len(idxs), 2, figsize=(6, 3 * len(idxs)), squeeze=False)
+
+        for row, i in zip(axes, idxs):
+            for ax, pred, dice, name in [(row[0], preds_raw[i], dices_raw[i], "raw"),
+                                         (row[1], preds_post[i], dices_post[i], "post-processed")]:
+                ax.imshow(xrays[i], cmap="gray")
+                error = np.zeros((*masks[i].shape, 4))      # RGBA, transparent by default
+                error[masks[i] & pred] = [0, 1, 0, 0.3]     # correct
+                error[pred & ~masks[i]] = [1, 0, 0, 0.7]    # false positive
+                error[masks[i] & ~pred] = [0, 0, 1, 0.7]    # false negative
+                ax.imshow(error)
+                ax.set_title(f"#{i + 1} {name}: Dice {dice:.4f}", fontsize=9)
+                ax.axis("off")
+
+        fig.suptitle("green = correct, red = false positive, blue = false negative", fontsize=9)
+        fig.tight_layout()
+        fig.savefig(os.path.join(args.out_dir, f"predictions_val_{k + 1}.png"), dpi=150)
+        plt.close(fig)
+
+
