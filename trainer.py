@@ -51,7 +51,7 @@ def train_model(model, train_loader, val_loader):
             scheduler.step()
 
             running_loss += loss.item()
-            # weighted by batch size, the last batch is smaller (45 = 16 + 16 + 13)
+            # weighted by batch size, the last batch can be smaller
             running_dice += dice_score_from_logits(outputs, masks) * images.size(0)
 
         train_loss = running_loss / len(train_loader)

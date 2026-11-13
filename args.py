@@ -9,7 +9,7 @@ def get_args():
 
     parser.add_argument("-epochs", type=int, default=100)
 
-    parser.add_argument("-bs", type=int, default=16)
+    parser.add_argument("-bs", type=int, default=8)
 
     parser.add_argument("-lr", type=float, default=1e-3)
 
