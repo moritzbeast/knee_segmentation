@@ -74,14 +74,13 @@ Image and mask are transformed together (`torchvision.transforms.v2` with `tv_te
 ## Results
 
 Mean Dice per image on the 15 validation images (raw predictions):
-
-| Run | Epochs | Val Dice |
-|---|---|---|
-| + augmentation + random invert (**final**) | 100 | 0.9886 |
+The final model reaches a mean Dice of 0.9886 on the 15 validation images.“
 
 **Augmentation** improved 12 of 15 validation images. The largest gain was on the hardest image (x-ray with markers and a bright strip at the border, 0.958 → 0.971), and the gap between training and validation curves closed.
 
 **Post-processing** has no effect on the validation set (the model produces no islands or holes there), but it changes 16 of 90 test images, mostly by filling holes. It can also hurt: on validation image `78.png` a vertical strip splits the femur, and removing the smaller component deletes a correct part.
+
+**Inverted test images.** 5 test images (`50`, `92`, `108`, `112`, `140`) are inverted (bone dark, background bright), while no training or validation image is. The model failed on them until `RandomInvert(p=0.2)` was added to the augmentation; now `108`, `112` and `140` are segmented correctly and `50` and `92` mostly.
 
 ## Limitations
 
